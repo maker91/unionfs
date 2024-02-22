@@ -25,6 +25,8 @@ const SPECIAL_METHODS = new Set([
   'watch',
   'watchFile',
   'unwatchFile',
+  'open',
+  'openSync',
 ]);
 
 const createFSProxy = (watchers: FSWatcher[]) =>
@@ -101,6 +103,88 @@ export class Union {
       this[method] = this[method].bind(this);
     }
   }
+
+  public open = (...args) => {
+    let flags;
+
+    if (args.length < 3) {
+      flags = 'r';
+    } else {
+      flags = args[1];
+    }
+
+    let lastarg = args.length - 1;
+    let cb = args[lastarg];
+    if (typeof cb !== 'function') {
+      cb = null;
+      lastarg++;
+    }
+
+    let lastError: IUnionFsError | null = null;
+    const iterate = (i = 0, err?: IUnionFsError) => {
+      if (err) {
+        err.prev = lastError;
+        lastError = err;
+      }
+
+      // Already tried all file systems, return the last error.
+      if (i >= this.fss.length) {
+        // last one
+        if (cb) cb(err ?? (!this.fss.length ? new Error('No file systems attached.') : undefined));
+        return;
+      }
+
+      const j = this.fss.length - i - 1;
+      const [fs, { readable, writable }] = this.fss[j];
+      const func = fs.open;
+
+      if (flags.startsWith('r') && readable === false) return iterate(i + 1);
+      if (flags.startsWith('w') && writable === false) return iterate(i + 1);
+      if (flags.startsWith('a') && (writable === false || readable === false)) return iterate(i + 1);
+
+      // Replace `callback` with our intermediate function.
+      args[lastarg] = function (err) {
+        if (err) return iterate(i + 1, err);
+        if (cb) cb.apply(cb, arguments);
+      };
+
+      if (!func) iterate(i + 1, Error('Method not supported: open'));
+      else {
+        try {
+          func.apply(fs, args);
+        } catch (err) {
+          iterate(i + 1, err);
+        }
+      }
+    };
+    iterate();
+  };
+
+  public openSync = (...args) => {
+    const flags = args[1];
+
+    let lastError: IUnionFsError | null = null;
+    for (let i = this.fss.length - 1; i >= 0; i--) {
+      const [fs, { readable, writable }] = this.fss[i];
+      if (flags.startsWith('r') && readable === false) continue;
+      if (flags.startsWith('w') && writable === false) continue;
+      if (flags.startsWith('a') && (writable === false || readable === false)) continue;
+      try {
+        if (!fs.openSync) throw Error(`Method not supported: "openSync" with args "${args}"`);
+        return fs.openSync.apply(fs, args);
+      } catch (err) {
+        err.prev = lastError;
+        lastError = err;
+        if (!i) {
+          // last one
+          throw err;
+        } else {
+          // Ignore error...
+          // continue;
+        }
+      }
+    }
+  };
 
   public unwatchFile = (...args) => {
     throw new Error('unwatchFile is not supported, please use watchFile');
