@@ -1,6 +1,6 @@
 {
   "name": "@ts/unionfs",
-  "version": "4.4.1",
+  "version": "4.4.2",
   "description": "Use multiple `fs` modules in a union.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

@@ -1,6 +1,5 @@
-import { FSWatcher, Dirent } from 'fs';
+import { FSWatcher, Dirent, ReadStream, WriteStream } from 'fs';
 import { IFS } from './fs';
-import { Readable, Writable } from 'stream';
 import {
   fsSyncMethodsWrite,
   fsSyncMethodsRead,
@@ -63,14 +62,29 @@ export type VolOptions = {
 };
 
 
+type Constructor<T> = new (...args: any[]) => T;
+
+function stripBoundVolumeArg<T extends Constructor<ReadStream> | Constructor<WriteStream>>(stream: T): T {
+  return class extends stream {
+    constructor(...args) {
+      if (args.length && !(args[0] instanceof Buffer || typeof args[0] === 'string')) {
+        args.shift();
+      }
+
+      super(...args);
+    }
+  }
+}
+
+
 /**
  * Union object represents a stack of filesystems
  */
 export class Union {
   private fss: [IFS, VolOptions][] = [];
 
-  public ReadStream: typeof Readable | (new (...args: any[]) => Readable) = Readable;
-  public WriteStream: typeof Writable | (new (...args: any[]) => Writable) = Writable;
+  public ReadStream: typeof ReadStream | (new (...args: any[]) => ReadStream) = stripBoundVolumeArg(ReadStream);
+  public WriteStream: typeof WriteStream | (new (...args: any[]) => WriteStream) = stripBoundVolumeArg(WriteStream);
 
   private promises: {} = {};
 
@@ -381,16 +395,16 @@ export class Union {
     throw lastError;
   };
 
-  public createWriteStream = (path: string) => {
+  public createWriteStream = (path: string, options?: any) => {
+    options = options || {};
     let lastError = null;
     for (const [fs, { writable }] of this.fss) {
       if (writable === false) continue;
       try {
         if (!fs.createWriteStream) throw Error(`Method not supported: "createWriteStream"`);
 
-        fs.statSync(path); //we simply stat first to exit early for mocked fs'es
-        //TODO which filesystem to write to?
-        const stream = fs.createWriteStream(path);
+        options.fs = fs;
+        const stream = fs.createWriteStream(path, options);
         if (!stream) {
           throw new Error('no valid stream');
         }

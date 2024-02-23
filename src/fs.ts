@@ -1,4 +1,3 @@
-import { Writable, Readable } from 'stream';
 import * as fs from 'fs';
 
 type FSMethods =
@@ -75,6 +74,6 @@ type FSMethods =
 type FS = Pick<typeof fs, FSMethods | 'promises'>;
 
 export interface IFS extends FS {
-  WriteStream: typeof Writable | (new (...args: any[]) => Writable);
-  ReadStream: typeof Readable | (new (...args: any[]) => Readable);
+  WriteStream: typeof fs.WriteStream | (new (...args: any[]) => fs.WriteStream);
+  ReadStream: typeof fs.ReadStream | (new (...args: any[]) => fs.ReadStream);
 }
